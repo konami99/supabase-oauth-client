@@ -6,61 +6,14 @@
   <title>Supabase OAuth Client</title>
 </head>
 <body>
-  <h1>Supabase OAuth Client New</h1>
-  <a id="auth-link" href="#">
-    <button>supabase auth</button>
-  </a>
+  <h1>Supabase OAuth Client</h1>
+  <button id="auth-btn">supabase auth</button>
 
   <script type="module">
-    const { projectRef: PROJECT_REF, clientId: CLIENT_ID, redirectUri: REDIRECT_URI } =
-      await fetch('/config').then(r => r.json());
-
-    // Generate a random code verifier (43-128 characters)
-    function generateCodeVerifier() {
-      const array = new Uint8Array(32)
-      crypto.getRandomValues(array)
-      return base64URLEncode(array)
-    }
-
-    // Create code challenge from verifier
-    async function generateCodeChallenge(verifier) {
-      const encoder = new TextEncoder()
-      const data = encoder.encode(verifier)
-      const hash = await crypto.subtle.digest('SHA-256', data)
-      return base64URLEncode(new Uint8Array(hash))
-    }
-
-    function base64URLEncode(buffer) {
-      return btoa(String.fromCharCode(...buffer))
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=/g, '')
-    }
-
-    // Generate and store verifier (you'll need it later)
-    const codeVerifier = generateCodeVerifier()
-    sessionStorage.setItem('code_verifier', codeVerifier)
-    document.cookie = `code_verifier=${codeVerifier}; path=/; SameSite=Lax`
-
-    // Generate challenge to send in authorization request
-    const codeChallenge = await generateCodeChallenge(codeVerifier)
-
-    // Generate random state
-    const state = base64URLEncode(crypto.getRandomValues(new Uint8Array(16)))
-    sessionStorage.setItem('oauth_state', state)
-
-    // Build and set the authorization URL
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: CLIENT_ID,
-      redirect_uri: REDIRECT_URI,
-      state,
-      code_challenge: codeChallenge,
-      code_challenge_method: 'S256',
-    })
-
-    document.getElementById('auth-link').href =
-      `https://${PROJECT_REF}.supabase.co/auth/v1/oauth/authorize?${params}`
+    document.getElementById('auth-btn').addEventListener('click', async () => {
+      const { authorizationUrl } = await fetch('/auth-url').then(r => r.json());
+      window.location.href = authorizationUrl;
+    });
   </script>
 </body>
 </html>
