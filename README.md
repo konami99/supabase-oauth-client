@@ -137,7 +137,9 @@ https://<project-ref>.supabase.co/auth/v1/oauth/authorize
 
 ### Step 4 — User authenticates on Supabase (conditional)
 
-This step only appears if the user does not already have an active Supabase browser session. If the user is already logged into Supabase in the browser, or if the OAuth app has consent auto-approved, Supabase skips this step and redirects immediately to the AgentCore callback URL.
+This step is handled entirely inside Supabase's servers — there is no code in this app for it.
+
+Supabase checks internally whether the user already has an active browser session and whether consent was previously granted. If so, it skips the consent UI and redirects immediately to the AgentCore callback URL. Otherwise, it shows the custom consent UI.
 
 If shown, Supabase redirects to the custom consent UI at `/oauth/consent?authorization_id=...`. The user logs in and grants consent there. Supabase then redirects to the AgentCore callback URL:
 
