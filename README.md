@@ -117,9 +117,11 @@ When the user clicks "supabase auth", the browser calls `/auth-url`. The server:
 
 ---
 
-### Step 3 — AgentCore → Supabase
+### Step 3 — AgentCore → Supabase (internal)
 
-AgentCore's authorize endpoint redirects the browser to Supabase:
+This step happens entirely inside AgentCore's infrastructure — there is no code in this app for it.
+
+When the browser navigates to the `authorizationUrl` from Step 2, AgentCore's servers handle the request: they look up the stored session, construct the Supabase authorize URL with the PKCE params they generated, and redirect the browser there:
 
 ```
 https://<project-ref>.supabase.co/auth/v1/oauth/authorize
