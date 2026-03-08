@@ -196,8 +196,8 @@ Browser          Express App          AgentCore          Supabase
    |<--------------------------------------redirect-----------| (authorization_id created)
    |----custom consent UI (if needed) ----------------------->|
    |<------redirect to AgentCore callbackUrl------------------|
-   |                  |          code stored by AgentCore     |
-   |<-redirect to SITE_URL/callback?session_id=...-|          |
+   |                  |                    | (code stored)    |
+   |<-redirect to /callback?session_id=...-|                  |
    |                  |                    |                  |
    |-- GET /callback->|                    |                  |
    |                  |--CompleteResourceTokenAuth----------->|
