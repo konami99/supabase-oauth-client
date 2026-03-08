@@ -135,7 +135,7 @@ https://<project-ref>.supabase.co/auth/v1/oauth/authorize
 
 ### Step 4 — User authenticates on Supabase
 
-Supabase generates an `authorization_id` and redirects to the consent UI (a React app at `localhost:5174/oauth/consent?authorization_id=...`). The user logs in and grants consent. Supabase redirects to the AgentCore callback URL:
+Supabase shows its hosted login and consent page. The user logs in and grants consent. Supabase redirects to the AgentCore callback URL:
 
 ```
 https://bedrock-agentcore.../identities/oauth2/callback/<provider-uuid>?code=<auth_code>&state=...
@@ -190,7 +190,7 @@ Browser          Express App          AgentCore          Supabase
    |----navigate to authorizationUrl------>|                  |
    |                  |                    |--redirect------->|
    |<--------------------------------------redirect-----------| (authorization_id created)
-   |----consent UI (localhost:5174) ----------------------->  |
+   |----Supabase hosted login/consent UI ----------------->  |
    |<------redirect to AgentCore callbackUrl---------------|  |
    |                  |          code stored by AgentCore     |
    |<-redirect to SITE_URL/callback?session_id=...-|          |
