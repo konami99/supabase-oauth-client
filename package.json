@@ -12,6 +12,8 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "^3.1004.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.1004.0",
     "axios": "^1.0.0",
     "cookie-parser": "^1.4.0",
     "dotenv": "^16.0.0",
