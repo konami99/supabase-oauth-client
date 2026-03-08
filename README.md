@@ -10,11 +10,11 @@ A Node.js/Express web app that performs a Supabase OAuth 2.0 authorization code 
 Browser → Express App → AWS Bedrock AgentCore → Supabase OAuth
 ```
 
-AgentCore acts as a proxy between this app and Supabase:
-- Generates and manages PKCE internally
-- Stores the client secret in AWS Secrets Manager
-- Stores the resulting access token in its token vault
-- Issues short-lived workload access tokens to authenticate SDK calls
+There are two separate authentication layers:
+
+1. **App authentication** — the user logs into the Express app with email/password (Supabase password grant). This sets a `supabase_jwt` cookie that identifies the user (by their Supabase `sub` claim) to our server. This is needed so the server knows which AgentCore user identity to associate the token with.
+
+2. **OAuth authorization** — AgentCore acts as the OAuth client on behalf of the user. It generates PKCE, redirects the user through Supabase's consent UI, exchanges the authorization code, and stores the resulting access token in its vault keyed by `(workload, userId, credentialProvider, scopes)`.
 
 ---
 
@@ -29,7 +29,7 @@ Create an OAuth app in **Supabase Dashboard → Authentication → OAuth Apps**:
   ```
   https://bedrock-agentcore.us-west-2.amazonaws.com/identities/oauth2/callback/<provider-uuid>
   ```
-- **Disable PKCE enforcement** — AgentCore handles PKCE internally but Supabase's HS256 JWT signing does not support the `openid` scope's ID token generation. Do not request the `openid` scope.
+- **Disable PKCE enforcement** — AgentCore handles PKCE internally. Do not request the `openid` scope (Supabase HS256 projects cannot generate ID tokens).
 
 ### 2. AgentCore Credential Provider
 
@@ -55,14 +55,16 @@ Note the returned `callbackUrl` — register it in your Supabase OAuth app's all
 
 ### 3. AgentCore Workload Identity
 
-Create a workload identity that is **not linked to a service** (external callers can obtain its token):
+Create a workload identity that is **not linked to a service**:
 
 ```bash
 aws bedrock-agentcore-control create-workload-identity \
   --name "my-webapp" \
-  --allowed-resource-oauth2-return-urls '["https://your-app-url.com"]' \
+  --allowed-resource-oauth2-return-urls '["https://your-app-url.com/callback"]' \
   --region us-west-2
 ```
+
+> `allowed-resource-oauth2-return-urls` is the URL AgentCore redirects the browser to after storing the authorization code. It must match `SITE_URL/callback`.
 
 > **Note:** Do not use a workload identity linked to an AgentCore agent runtime — those cannot issue tokens to external callers.
 
@@ -80,42 +82,44 @@ REDIRECT_URI=https://bedrock-agentcore.us-west-2.amazonaws.com/identities/oauth2
 # AgentCore
 WORKLOAD_NAME=my-webapp
 CREDENTIAL_PROVIDER_NAME=my-supabase-provider
-USER_ID=the-user-id-to-associate-tokens-with
 
 # App
 PORT=3000
 SITE_URL=https://your-app-url.com
 AWS_REGION=us-west-2
+SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
 ---
 
 ## OAuth Flow
 
-### Step 1 — Page load
+### Step 1 — App login (`POST /login`)
 
-`GET /` — serves `index.html` with a "supabase auth" button.
+The user enters their Supabase email and password. The server calls the Supabase password grant endpoint and stores the returned JWT in an `HttpOnly` cookie. The JWT's `sub` claim is used as the `userId` for all AgentCore calls.
+
+This step is separate from the OAuth flow — it only establishes who the user is within this app.
 
 ---
 
 ### Step 2 — Initiate OAuth (`GET /auth-url`)
 
-When the user clicks the button, the browser calls `/auth-url`. The server:
+When the user clicks "supabase auth", the browser calls `/auth-url`. The server:
 
 1. Calls `GetWorkloadAccessTokenForUserIdCommand(workloadName, userId)`
    - Returns a short-lived `workloadAccessToken` proving this workload+user identity
 2. Calls `GetResourceOauth2TokenCommand` with the workload token
-   - AgentCore finds no cached token for this user
-   - AgentCore creates a session, generates PKCE internally
-   - Returns `authorizationUrl` (an AgentCore PAR endpoint URL) and `sessionUri`
 
-The browser is redirected to `authorizationUrl`.
+**Two possible responses:**
+
+- **Token already cached** — AgentCore finds a stored token for this `(workload, userId, credentialProvider, scopes)` combination and returns `accessToken` directly. No OAuth redirect is needed.
+- **No cached token** — AgentCore creates a session, generates PKCE internally, and returns `authorizationUrl` (an AgentCore PAR endpoint URL). The browser is redirected there.
 
 ---
 
 ### Step 3 — AgentCore → Supabase
 
-AgentCore's authorize endpoint looks up the stored session and redirects the browser to Supabase:
+AgentCore's authorize endpoint redirects the browser to Supabase:
 
 ```
 https://<project-ref>.supabase.co/auth/v1/oauth/authorize
@@ -131,7 +135,7 @@ https://<project-ref>.supabase.co/auth/v1/oauth/authorize
 
 ### Step 4 — User authenticates on Supabase
 
-The user logs in and grants consent on Supabase's UI. Supabase redirects to the AgentCore callback URL:
+Supabase generates an `authorization_id` and redirects to the consent UI (a React app at `localhost:5174/oauth/consent?authorization_id=...`). The user logs in and grants consent. Supabase redirects to the AgentCore callback URL:
 
 ```
 https://bedrock-agentcore.../identities/oauth2/callback/<provider-uuid>?code=<auth_code>&state=...
@@ -141,36 +145,27 @@ https://bedrock-agentcore.../identities/oauth2/callback/<provider-uuid>?code=<au
 
 ### Step 5 — AgentCore stores the code
 
-AgentCore receives the authorization code, stores it against the session, then redirects to `SITE_URL`:
+AgentCore receives the authorization code and stores it against the session. It then redirects the browser to `SITE_URL/callback`:
 
 ```
-https://your-app-url.com/?session_id=<sessionUri>
+https://your-app-url.com/callback?session_id=<sessionUri>
 ```
 
 > AgentCore does **not** exchange the code yet — it waits for `CompleteResourceTokenAuth`.
 
 ---
 
-### Step 6 — App completes the exchange (`GET /?session_id=...`)
+### Step 6 — App completes the exchange (`GET /callback`)
 
-The server must handle this immediately (before the authorization code expires):
+The server handles this immediately (before the authorization code expires):
 
 1. Calls `GetWorkloadAccessTokenForUserIdCommand` → fresh `workloadAccessToken`
 2. Calls `CompleteResourceTokenAuthCommand(sessionUri, userIdentifier)`
-   - AgentCore calls Supabase's token endpoint:
-     ```
-     POST /auth/v1/oauth/token
-       grant_type=authorization_code
-       code=<stored auth code>
-       client_id=<CLIENT_ID>
-       client_secret=<from Secrets Manager>
-       redirect_uri=<AgentCore callbackUrl>
-       code_verifier=<stored by AgentCore>
-     ```
+   - AgentCore calls Supabase's token endpoint with the stored code and PKCE verifier
    - Supabase returns an `access_token`
-   - AgentCore stores it in the token vault keyed by `(workload, userId, credentialProvider, scopes)`
+   - AgentCore stores it in the vault keyed by `(workload, userId, credentialProvider, scopes)`
 3. Calls `GetResourceOauth2TokenCommand` (no `sessionUri`)
-   - AgentCore finds the cached token → returns `accessToken`
+   - AgentCore finds the cached token and returns `accessToken`
 
 ---
 
@@ -179,22 +174,28 @@ The server must handle this immediately (before the authorization code expires):
 ```
 Browser          Express App          AgentCore          Supabase
    |                  |                    |                  |
+   |--- POST /login ->|                    |                  |
+   |                  |-- password grant ->|                  |
+   |                  |                   (Supabase auth API) |
+   |<-- set cookie ---|                    |                  |
+   |                  |                    |                  |
    |-- GET /auth-url->|                    |                  |
    |                  |--GetWorkloadToken->|                  |
    |                  |<-workloadToken-----|                  |
    |                  |--GetResourceOauth2Token-------------->|
+   |                  |  [no cached token]                    |
    |                  |<-authorizationUrl + sessionUri--------|
    |<-authorizationUrl|                    |                  |
    |                  |                    |                  |
    |----navigate to authorizationUrl------>|                  |
    |                  |                    |--redirect------->|
-   |<--------------------------------------redirect-----------|
-   |----authenticate on Supabase-------------------------->  |
+   |<--------------------------------------redirect-----------| (authorization_id created)
+   |----consent UI (localhost:5174) ----------------------->  |
    |<------redirect to AgentCore callbackUrl---------------|  |
    |                  |          code stored by AgentCore     |
-   |<-redirect to SITE_URL?session_id=...-|                  |
+   |<-redirect to SITE_URL/callback?session_id=...-|          |
    |                  |                    |                  |
-   |-- GET /?session_id=... ------------->|                    |
+   |-- GET /callback->|                    |                  |
    |                  |--CompleteResourceTokenAuth----------->|
    |                  |                    |--POST /token---->|
    |                  |                    |<-access_token----|
@@ -202,6 +203,11 @@ Browser          Express App          AgentCore          Supabase
    |                  |--GetResourceOauth2Token (cached)----->|
    |                  |<-accessToken--------------------------|
    |<-OAuth complete--|                    |                  |
+   |                  |                    |                  |
+   |-- GET /auth-url->|  [second click]    |                  |
+   |                  |--GetResourceOauth2Token (cached)----->|
+   |                  |<-accessToken--------------------------|
+   |<-accessToken-----|                    |                  |
 ```
 
 ---
@@ -209,6 +215,6 @@ Browser          Express App          AgentCore          Supabase
 ## Known Limitations
 
 - **`openid` scope is not supported** — Supabase projects using HS256 JWT signing cannot generate ID tokens. Only request `email`, `profile`, etc.
-- **`USER_ID` is hardcoded** — in production, derive it from the authenticated user's session.
-- **Authorization code is short-lived** — `CompleteResourceTokenAuth` must be called promptly after the `session_id` redirect lands. Do not poll or retry with a stale session.
+- **Authorization code is short-lived** — `CompleteResourceTokenAuth` must be called promptly after the `session_id` redirect lands.
 - **Service-linked workloads cannot be used** — only workload identities not linked to an AgentCore runtime can issue tokens via `GetWorkloadAccessTokenForUserId`.
+- **In-memory PKCE state** — app login sessions are stored in a cookie but the user must re-login if the server restarts.
