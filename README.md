@@ -137,9 +137,9 @@ https://<project-ref>.supabase.co/auth/v1/oauth/authorize
 
 ### Step 4 — User authenticates on Supabase (conditional)
 
-This step only appears if the user does not already have an active Supabase browser session. If the user is already logged into Supabase in the browser, or if the OAuth app has consent auto-approved, Supabase skips the login/consent page and redirects immediately to the AgentCore callback URL.
+This step only appears if the user does not already have an active Supabase browser session. If the user is already logged into Supabase in the browser, or if the OAuth app has consent auto-approved, Supabase skips this step and redirects immediately to the AgentCore callback URL.
 
-If shown, Supabase displays its hosted login and consent page. After the user logs in and grants consent, Supabase redirects to the AgentCore callback URL:
+If shown, Supabase redirects to the custom consent UI at `/oauth/consent?authorization_id=...`. The user logs in and grants consent there. Supabase then redirects to the AgentCore callback URL:
 
 ```
 https://bedrock-agentcore.../identities/oauth2/callback/<provider-uuid>?code=<auth_code>&state=...
@@ -194,7 +194,7 @@ Browser          Express App          AgentCore          Supabase
    |----navigate to authorizationUrl------>|                  |
    |                  |                    |--redirect------->|
    |<--------------------------------------redirect-----------| (authorization_id created)
-   |----Supabase hosted login/consent UI (if needed) ----->  |
+   |----custom consent UI (if needed) --------------->  |
    |<------redirect to AgentCore callbackUrl---------------|  |
    |                  |          code stored by AgentCore     |
    |<-redirect to SITE_URL/callback?session_id=...-|          |
