@@ -8,51 +8,11 @@
 <body>
   <h1>Supabase OAuth Client</h1>
 
-  <div id="logged-out" style="display:none">
-    <h2>Login</h2>
-    <input id="email" type="email" placeholder="Email" />
-    <input id="password" type="password" placeholder="Password" />
-    <button id="login-btn">Login</button>
-    <p id="login-error" style="color:red"></p>
-  </div>
-
-  <div id="logged-in" style="display:none">
-    <p>Logged in as <span id="user-id"></span></p>
-    <button id="auth-btn">supabase auth</button>
-    <button id="logout-btn">Logout</button>
-  </div>
+  <button id="auth-btn">supabase auth</button>
 
   <script type="module">
-    async function checkSession() {
-      const res = await fetch('/me');
-      if (res.ok) {
-        const { userId } = await res.json();
-        document.getElementById('user-id').textContent = userId;
-        document.getElementById('logged-in').style.display = '';
-      } else {
-        document.getElementById('logged-out').style.display = '';
-      }
-    }
-
-    document.getElementById('login-btn').addEventListener('click', async () => {
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      const res = await fetch('/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      if (res.ok) {
-        window.location.reload();
-      } else {
-        const { error } = await res.json();
-        document.getElementById('login-error').textContent = error;
-      }
-    });
-
     document.getElementById('auth-btn').addEventListener('click', async () => {
       const res = await fetch('/auth-url');
-      if (res.status === 401) return alert('Please log in first');
       if (!res.ok) {
         const err = await res.json();
         return alert(`Error: ${err.message}`);
@@ -63,13 +23,6 @@
       }
       window.location.href = data.authorizationUrl;
     });
-
-    document.getElementById('logout-btn').addEventListener('click', async () => {
-      await fetch('/logout', { method: 'POST' });
-      window.location.reload();
-    });
-
-    checkSession();
   </script>
 </body>
 </html>
