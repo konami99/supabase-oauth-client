@@ -165,40 +165,51 @@ The server verifies the `session_id` cookie is present (confirming this is the s
 ### Sequence Diagram
 
 ```
-Browser          Express App          AgentCore          Supabase
-   |                  |                    |                  |
-   |-- GET /auth-url->|                    |                  |
-   |  [assigns session_id cookie]          |                  |
-   |                  |--GetWorkloadToken->|                  |
-   |                  |<-workloadToken-----|                  |
-   |                  |--GetResourceOauth2Token-------------->|
-   |                  |  [no cached token]                    |
-   |                  |<-authorizationUrl + sessionUri--------|
-   |<-authorizationUrl|                    |                  |
-   |                  |                    |                  |
-   |----navigate to authorizationUrl------>|                  |
-   |                  |                    |--redirect------->|
-   |<--------------------------------------redirect-----------| (consent UI shown)
-   |----user grants consent------------------------------------------->|
-   |<------redirect to AgentCore callbackUrl------------------|
-   |                  |                    | (code stored)    |
-   |<-redirect to /callback?session_id=...-|                  |
-   |                  |                    |                  |
-   |-- GET /callback->|                    |                  |
-   |  [session_id cookie verified]         |                  |
-   |                  |--CompleteResourceTokenAuth----------->|
-   |                  |                    |--POST /token---->|
-   |                  |                    |<-access_token----|
-   |                  |                    | (stored in vault)|
-   |                  |--GetResourceOauth2Token (cached)----->|
-   |                  |<-accessToken--------------------------|
-   |<-OAuth complete--|                    |                  |
-   |                  |                    |                  |
-   |-- GET /auth-url->|  [second click]    |                  |
-   |                  |--GetResourceOauth2Token (cached)----->|
-   |                  |<-accessToken--------------------------|
-   |<-accessToken-----|                    |                  |
+Browser               Express App               AgentCore               Supabase
+   |                       |                        |                        |
+   |--- GET /auth-url ----->|                        |                        |
+   | [session_id assigned]  |                        |                        |
+   |                        |-- GetWorkloadToken ---->|                        |
+   |                        |<-- workloadToken -------|                        |
+   |                        |-- GetResourceOauth2Token ----------------------->|
+   |                        |   [no cached token]    |                        |
+   |                        |<-- authorizationUrl + sessionUri ----------------|
+   |<-- authorizationUrl ---|                        |                        |
+   |                        |                        |                        |
+   |--- navigate to authorizationUrl --------------->|                        |
+   |                        |                        |--- redirect ----------->|
+   |<--------------------------------------------------------------- redirect -| (consent UI shown)
+   |--- user grants consent ------------------------------------------------->|
+   |<------- redirect to AgentCore callbackUrl ------|                        |
+   |                        |                        | [code stored]          |
+   |<--- redirect to /callback?session_id=... -------|                        |
+   |                        |                        |                        |
+   |--- GET /callback ----->|                        |                        |
+   | [session_id verified]  |                        |                        |
+   |                        |-- CompleteResourceTokenAuth ------------------>|
+   |                        |                        |--- POST /token -------->|
+   |                        |                        |<-- access_token --------|
+   |                        |                        | [stored in vault]      |
+   |                        |-- GetResourceOauth2Token (cached) ------------->|
+   |                        |<-- accessToken ---------|                        |
+   |<-- OAuth complete -----|                        |                        |
+   |                        |                        |                        |
+   |--- GET /auth-url ----->| [second click]         |                        |
+   |                        |-- GetResourceOauth2Token (cached) ------------->|
+   |                        |<-- accessToken ---------|                        |
+   |<-- accessToken --------|                        |                        |
 ```
+
+---
+
+## Multiple Integrations
+
+A single workload identity represents your application — you do not need a new one per integration. For each additional OAuth provider (GitHub, Google, etc.), create a new credential provider and reuse the same workload identity.
+
+- **One workload identity** — `my-webapp`
+- **One credential provider per OAuth integration** — `my-supabase-provider`, `my-github-provider`, `my-google-provider`, etc.
+
+Pass a different `resourceCredentialProviderName` to `GetResourceOauth2TokenCommand` for each integration. The vault key `(workload, userId, credentialProvider, scopes)` keeps tokens for each integration separate.
 
 ---
 
