@@ -186,7 +186,7 @@ Browser               Express App               AgentCore               Supabase
    |                        |                        |                        |
    |--- GET /callback ----->|                        |                        |
    | [session_id verified]  |                        |                        |
-   |                        |-- CompleteResourceTokenAuth ------------------>|
+   |                        |-- CompleteResourceTokenAuth -->|                |
    |                        |                        |--- POST /token -------->|
    |                        |                        |<-- access_token --------|
    |                        |                        | [stored in vault]      |
