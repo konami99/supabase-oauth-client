@@ -171,16 +171,16 @@ Browser               Express App               AgentCore               Supabase
    | [session_id assigned]  |                        |                        |
    |                        |-- GetWorkloadToken ---->|                        |
    |                        |<-- workloadToken -------|                        |
-   |                        |-- GetResourceOauth2Token ----------------------->|
+   |                        |-- GetResourceOauth2Token -->|                    |
    |                        |   [no cached token]    |                        |
-   |                        |<-- authorizationUrl + sessionUri ----------------|
+   |                        |<-- authorizationUrl + sessionUri|                |
    |<-- authorizationUrl ---|                        |                        |
    |                        |                        |                        |
    |--- navigate to authorizationUrl --------------->|                        |
    |                        |                        |--- redirect ----------->|
    |<--------------------------------------------------------------- redirect -| (consent UI shown)
    |--- user grants consent ------------------------------------------------->|
-   |<------- redirect to AgentCore callbackUrl ------|                        |
+   |<------------------------------------- redirect to AgentCore callbackUrl -|
    |                        |                        | [code stored]          |
    |<--- redirect to /callback?session_id=... -------|                        |
    |                        |                        |                        |
@@ -190,12 +190,12 @@ Browser               Express App               AgentCore               Supabase
    |                        |                        |--- POST /token -------->|
    |                        |                        |<-- access_token --------|
    |                        |                        | [stored in vault]      |
-   |                        |-- GetResourceOauth2Token (cached) ------------->|
+   |                        |-- GetResourceOauth2Token -->|                    |
    |                        |<-- accessToken ---------|                        |
    |<-- OAuth complete -----|                        |                        |
    |                        |                        |                        |
    |--- GET /auth-url ----->| [second click]         |                        |
-   |                        |-- GetResourceOauth2Token (cached) ------------->|
+   |                        |-- GetResourceOauth2Token -->|                    |
    |                        |<-- accessToken ---------|                        |
    |<-- accessToken --------|                        |                        |
 ```
