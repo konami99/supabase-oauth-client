@@ -14,6 +14,7 @@
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.1004.0",
     "@aws-sdk/client-bedrock-agentcore-control": "^3.1004.0",
+    "@supabase/supabase-js": "^2.99.1",
     "axios": "^1.0.0",
     "cookie-parser": "^1.4.0",
     "dotenv": "^16.0.0",

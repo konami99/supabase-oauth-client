@@ -5,6 +5,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import { BedrockAgentCoreClient, GetWorkloadAccessTokenForUserIdCommand, GetResourceOauth2TokenCommand, CompleteResourceTokenAuthCommand } from "@aws-sdk/client-bedrock-agentcore";
 import { jwtVerify } from 'jose';
+import { createClient } from '@supabase/supabase-js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,6 +17,7 @@ const PORT = process.env.PORT || 3000;
 const SITE_URL = process.env.SITE_URL || `http://localhost:${PORT}`;
 
 const agentCoreClient = new BedrockAgentCoreClient({ region: process.env.AWS_REGION || "us-west-2" });
+const supabase = createClient(`https://${process.env.PROJECT_REF}.supabase.co`, process.env.SUPABASE_ANON_KEY);
 
 const JWT_SECRET = new TextEncoder().encode(process.env.SUPABASE_JWT_SECRET);
 
@@ -61,22 +63,10 @@ app.post("/logout", (_req, res) => {
 
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
-  try {
-    const response = await fetch(
-      `https://${process.env.PROJECT_REF}.supabase.co/auth/v1/token?grant_type=password`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: process.env.SUPABASE_ANON_KEY },
-        body: JSON.stringify({ email, password }),
-      }
-    );
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error_description || data.error || "Login failed");
-    res.cookie("supabase_jwt", data.access_token, { httpOnly: true, sameSite: "lax", secure: SITE_URL.startsWith("https") });
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(401).json({ error: err.message });
-  }
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) return res.status(401).json({ error: error.message });
+  res.cookie("supabase_jwt", data.session.access_token, { httpOnly: true, sameSite: "lax", secure: SITE_URL.startsWith("https") });
+  res.json({ ok: true });
 });
 
 app.get("/auth-url", requireAuth, async (req, res) => {
