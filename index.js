@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import express from "express";
 import cookieParser from "cookie-parser";
 import { BedrockAgentCoreClient, GetWorkloadAccessTokenForUserIdCommand, GetResourceOauth2TokenCommand, CompleteResourceTokenAuthCommand } from "@aws-sdk/client-bedrock-agentcore";
+import { jwtVerify } from 'jose';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,16 +17,27 @@ const SITE_URL = process.env.SITE_URL || `http://localhost:${PORT}`;
 
 const agentCoreClient = new BedrockAgentCoreClient({ region: process.env.AWS_REGION || "us-west-2" });
 
-function getUserIdFromJwt(jwt) {
-  const payload = JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString());
+const JWT_SECRET = new TextEncoder().encode(process.env.SUPABASE_JWT_SECRET);
+
+async function getUserIdFromJwt(jwt) {
+  const { payload } = await jwtVerify(jwt, JWT_SECRET);
   return payload.sub;
 }
 
-function requireAuth(req, res, next) {
+function decodeJwtPayload(jwt) {
+  return JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString());
+}
+
+async function requireAuth(req, res, next) {
   const jwt = req.cookies.supabase_jwt;
   if (!jwt) return res.status(401).json({ error: "Not logged in" });
-  req.userId = getUserIdFromJwt(jwt);
-  next();
+  try {
+    req.userId = await getUserIdFromJwt(jwt);
+    next();
+  } catch (err) {
+    console.error("requireAuth failed:", err.message);
+    res.status(401).json({ error: "Invalid or expired token" });
+  }
 }
 
 app.get("/", (_req, res) => {
@@ -34,6 +46,12 @@ app.get("/", (_req, res) => {
 
 app.get("/me", requireAuth, (req, res) => {
   res.json({ userId: req.userId });
+});
+
+app.get("/debug-token", (req, res) => {
+  const jwt = req.cookies.supabase_jwt;
+  if (!jwt) return res.status(401).json({ error: "No token" });
+  res.json(decodeJwtPayload(jwt));
 });
 
 app.post("/logout", (_req, res) => {
@@ -95,7 +113,14 @@ app.get("/callback", async (req, res) => {
 
   const jwt = req.cookies.supabase_jwt;
   if (!jwt) return res.status(401).send("Not logged in");
-  const userId = getUserIdFromJwt(jwt);
+
+  let userId;
+  try {
+    userId = await getUserIdFromJwt(jwt);
+  } catch (err) {
+    console.error("callback JWT verification failed:", err.message);
+    return res.status(401).send("Invalid or expired token");
+  }
 
   try {
     const { workloadAccessToken } = await agentCoreClient.send(
